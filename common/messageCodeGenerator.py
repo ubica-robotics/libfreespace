@@ -20,6 +20,10 @@
 import sys
 import argparse
 import os
+import functools
+
+def cmp(a,b):
+    return (a > b) - (a < b)
 
 def compareMessages(a, b):
     # Sort ID[0] before ID[1] before ID[2]
@@ -60,7 +64,7 @@ class MessageCodeGenerator:
         self.srcDir = src
 
     def writeMessages(self, messages):
-        messages.sort(compareMessages)
+        messages.sort(key=functools.cmp_to_key(compareMessages))
 
 
         codecsFileName = "freespace_codecs"
@@ -353,7 +357,7 @@ LIBFREESPACE_API int freespace_decode_message(const uint8_t* message, int length
                 if message.ID[v]['constID'] in usedIDs:
                     continue
                 file.write("\t\t\t\tcase %d:"%message.ID[v]['constID'])
-                if message.ID[v].has_key('subId'):
+                if 'subId' in message.ID[v].keys():
                     file.write('''
                     switch (message[%d]) {''' % subIdMap[v])
                     for subMessage in messages:
@@ -474,10 +478,10 @@ def extractFields(message):
         for field in version:
             if field['name'] == 'RESERVED':
                 continue
-            if field.has_key('cType'):
-                if not fields.has_key(field['name']):
+            if 'cType' in field.keys():
+                if field['name'] not in fields.keys():
                     item = cTypeToTypeInfo(field['cType'], field['size'])
-                    if field.has_key('comment'):
+                    if 'comment' in field.keys():
                         item['Doc'] = field['comment']
                     else:
                         item['Doc'] = ""
@@ -489,13 +493,13 @@ def extractFields(message):
                     fieldsList.append(item)
                 else:
                     field['typeDecode'] = fields[field['name']]
-            elif field.has_key('bits'):
+            elif 'bits' in field.keys():
                 for bit in field['bits']:
                     if bit['name'] == 'RESERVED':
                         continue
-                    if not fields.has_key(bit['name']):
+                    if bit['name'] not in fields.keys():
                         item = bitToTypeInfo(bit)
-                        if bit.has_key('comment'):
+                        if 'comment' in bit.keys():
                             item['Doc'] = bit['comment']
                         else:
                             item['Doc'] = ""
@@ -505,13 +509,13 @@ def extractFields(message):
                         fieldsList.append(item)
                     else:
                         bit['typeDecode'] = fields[bit['name']]
-            elif field.has_key('nibbles'):
+            elif 'nibbles' in field.keys():
                 for nibble in field['nibbles']:
                     if nibble['name'] == 'RESERVED':
                         continue
-                    if not fields.has_key(nibble['name']):
+                    if nibble['name'] not in fields.keys():
                         item = {'type':'int', 'signed':False, 'length':4, 'count':1, 'warning':'no'}
-                        if nibble.has_key('comment'):
+                        if 'comment' in nibble.keys():
                             item['Doc'] = nibble['comment']
                         else:
                             item['Doc'] = ""
@@ -558,7 +562,7 @@ def cTypeToTypeInfo(ct, sizeInBytes):
     return typeInfo
     
 def bitToTypeInfo(bt):
-    if not bt.has_key('size'):
+    if 'size' not in bt.keys():
         return {'type':'uint8_t', 'signed':False, 'length':1, 'count':1, 'warning':'no'}
     elif bt['size'] == 1:
         return {'type':'uint8_t', 'signed':False, 'length':1, 'count':1, 'warning':'no'}
@@ -641,19 +645,19 @@ def writeEncodeBody(message, fields, outFile):
                 outFile.write("\t\t\tmessage[3] = m->src;\n")
                 outFile.write("\t\t\toffset = 4;\n")
             # Message sub ID, if defined
-            if message.ID[v].has_key('subId'):
+            if 'subId' in message.ID[v].keys():
                 outFile.write("\t\t\tmessage[%d + offset] = (uint8_t) %d;\n" % (byteCounter, message.ID[v]['subId']['id']))
                 byteCounter += 1
 
             # Message fields
             for field in message.Fields[v]:
-                if field.has_key('synthesized'):
+                if 'synthesized' in field.keys():
                     continue
                 elementSize = field['size']
                 if field['name'] == 'RESERVED':
                     byteCounter += elementSize
                     continue
-                if field.has_key('bits'):
+                if 'bits' in field.keys():
                     bitoffset = 0
                     exprs = []
                     for bit in field['bits']:
@@ -665,7 +669,7 @@ def writeEncodeBody(message, fields, outFile):
                     exprs = "\n\t\t\t\t\t\t\t\t|  ".join(exprs)
                     outFile.write('\t\t\tmessage[%d + offset] = (%s);\n' % (byteCounter, exprs))
                     byteCounter += 1
-                elif field.has_key('nibbles'):
+                elif 'nibbles' in field.keys():
                     outFile.write('\t\t\tmessage[%d + offset] = byteFromNibbles('%byteCounter)
                     firstLoop = True
                     for nibble in field['nibbles']:
@@ -679,13 +683,13 @@ def writeEncodeBody(message, fields, outFile):
                             outFile.write('s->%s'%nibble['name']);
                     outFile.write(');\n')
                     byteCounter += 1
-                elif field.has_key('cType'):
+                elif 'cType' in field.keys():
                     if field['typeDecode']['count'] == 1:
-                        for j in range (field['typeDecode']['width']):
+                        for j in range (int(field['typeDecode']['width'])):
                             outFile.write('\t\t\tmessage[%d + offset] = s->%s >> %d;\n'%(byteCounter, field['name'], 8 * j))
                             byteCounter += 1
                     else:
-                        for i in range (field['typeDecode']['count']):
+                        for i in range (int(field['typeDecode']['count'])):
                             for j in range (field['typeDecode']['width']):
                                 outFile.write('\t\t\tmessage[%d + offset] = s->%s[%d] >> %d;\n'%(byteCounter, field['name'], i, 8 * j))
                                 byteCounter += 1
@@ -732,7 +736,7 @@ def writeDecodeBody(message, fields, outFile):
                 outFile.write("\t\t\tm->dest = message[2];\n")
                 outFile.write("\t\t\tm->src = message[3];\n")
 
-            if message.ID[v].has_key('subId'):
+            if 'subId' in message.ID[v].keys():
                 outFile.write('''
             if ((uint8_t) message[offset] != %d) {
                 return FREESPACE_ERROR_MALFORMED_MESSAGE;
@@ -740,32 +744,32 @@ def writeDecodeBody(message, fields, outFile):
 '''%message.ID[v]['subId']['id'])
                 byteCounter += 1
             for field in message.Fields[v]:
-                if field.has_key('synthesized'):
+                if 'synthesized' in field.keys():
                     continue
                 elementSize = field['size']
                 if field['name'] == 'RESERVED':
                     byteCounter += elementSize
                     continue
-                if field.has_key('cType'):
+                if 'cType' in field.keys():
                     if field['typeDecode']['count'] == 1:
                         outFile.write("\t\t\ts->%s = %s(&message[%d + offset]);\n" % (field['name'], IntConversionHelper(field['typeDecode']['type']), byteCounter))
                         byteCounter += field['typeDecode']['width']
                     else:
-                        for i in range (field['typeDecode']['count']):
+                        for i in range (int(field['typeDecode']['count'])):
                             outFile.write("\t\t\ts->%s[%d] = %s(&message[%d + offset]);\n" % (field['name'], i, IntConversionHelper(field['typeDecode']['type']), byteCounter))
                             byteCounter += field['typeDecode']['width']
-                elif field.has_key('bits'):
+                elif 'bits' in field.keys():
                     bitCounter = 0
                     for bit in field['bits']:
                         if bit['name'] != 'RESERVED':
-                            if bit.has_key('size'):
+                            if 'size' in bit.keys():
                                 outFile.write("\t\t\ts->%s = (uint8_t) ((message[%d + offset] >> %d) & 0x%02X);\n"%(bit['name'], byteCounter, bitCounter, 2**bit['size']-1))
                                 bitCounter += bit['size']-1
                             else:
                                 outFile.write("\t\t\ts->%s = getBit(message[%d + offset], %d);\n"%(bit['name'], byteCounter, bitCounter))
                         bitCounter += 1
                     byteCounter += 1
-                elif field.has_key('nibbles'):
+                elif 'nibbles' in field.keys():
 
                     nibbleCounter = 0
                     for nibble in field['nibbles']:
@@ -776,7 +780,7 @@ def writeDecodeBody(message, fields, outFile):
                 else:
                     print ("Unrecognized field type in %s\n" % message.name)
             for field in message.Fields[v]:
-                if field.has_key('synthesized'):
+                if 'synthesized' in field.keys():
                     outFile.write(specialCaseCode(field['synthesized']))
             outFile.write("\t\t\treturn FREESPACE_SUCCESS;\n")
     # Default case
@@ -939,7 +943,7 @@ def main(argv=None):
         d = {}
         
         for f in args.messageFiles:
-            execfile(f, g, d)
+            exec(open(f).read(), g, d)
             messages.extend(d['messages'])
 
         includeDir = os.path.join(args.include, "freespace")
@@ -954,7 +958,7 @@ def main(argv=None):
             srcDir
         )
         mcg.writeMessages(messages)
-    except Usage, err:
+    except Usage as err:
         print >>sys.stderr, err.msg
         print >>sys.stderr, "for help use --help"
         return 2

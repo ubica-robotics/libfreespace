@@ -57,11 +57,11 @@ class Message:
         size = 1 # Add one for the opening message type byte
         if version == 2:
             size += 3 # Account for len, dest, src bytes
-        if self.ID[version].has_key('subId'):
+        if 'subId' in self.ID[version].keys():
             size += self.ID[version]['subId']['size']
         if len(self.Fields[version]):
             for element in self.Fields[version]:
-                if element.has_key('synthesized'):
+                if 'synthesized' in  element.keys():
                     continue
                 size += element['size']
         return size
